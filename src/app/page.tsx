@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { toBlobURL } from "@ffmpeg/util";
 
 interface Scene {
   id: number;
@@ -35,6 +37,9 @@ export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
+  const ffmpegRef = useRef<FFmpeg | null>(null);
+  const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
+  const [ffmpegLoading, setFfmpegLoading] = useState(false);
 
   // Preload images into cache
   const preloadImage = useCallback((url: string): Promise<HTMLImageElement> => {
@@ -339,44 +344,104 @@ export default function Home() {
     }
   };
 
-  // Export as video using MediaRecorder + canvas
+  // Load FFmpeg
+  const loadFFmpeg = async () => {
+    if (ffmpegRef.current && ffmpegLoaded) return ffmpegRef.current;
+    setFfmpegLoading(true);
+    const ffmpeg = new FFmpeg();
+    const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm";
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+    });
+    ffmpegRef.current = ffmpeg;
+    setFfmpegLoaded(true);
+    setFfmpegLoading(false);
+    return ffmpeg;
+  };
+
+  // Export as MP4 video using FFmpeg.wasm
   const exportVideo = async () => {
     if (!story || !canvasRef.current) return;
     setAppState("exporting");
     setExportProgress(0);
 
-    const canvas = canvasRef.current;
-    const stream = canvas.captureStream(30);
-    const mediaRecorder = new MediaRecorder(stream, {
-      mimeType: "video/webm;codecs=vp9",
-      videoBitsPerSecond: 5000000,
-    });
+    try {
+      setProgress("FFmpeg wird geladen...");
+      const ffmpeg = await loadFFmpeg();
 
-    const chunks: Blob[] = [];
-    mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+      const canvas = canvasRef.current;
+      const fps = 1; // 1 frame per second, we duplicate frames for duration
+      let frameIndex = 0;
 
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(chunks, { type: "video/webm" });
-      const url = URL.createObjectURL(blob);
+      // Generate frames: one JPEG per second of video
+      for (let i = 0; i < story.scenes.length; i++) {
+        setExportProgress(Math.round(((i + 1) / story.scenes.length) * 80));
+        setProgress(`Szene ${i + 1}/${story.scenes.length} wird gerendert...`);
+        setCurrentScene(i);
+        await drawScene(i);
+
+        // Wait a tick for canvas to render
+        await new Promise((r) => setTimeout(r, 100));
+
+        // Get frame as JPEG blob
+        const blob = await new Promise<Blob>((resolve) =>
+          canvas.toBlob((b) => resolve(b!), "image/jpeg", 0.92)
+        );
+        const buffer = await blob.arrayBuffer();
+
+        // Write the same frame multiple times for the scene duration
+        const duration = story.scenes[i].duration || 3;
+        for (let f = 0; f < duration; f++) {
+          const filename = `frame${String(frameIndex).padStart(5, "0")}.jpg`;
+          await ffmpeg.writeFile(filename, new Uint8Array(buffer));
+          frameIndex++;
+        }
+      }
+
+      setProgress("MP4 wird encodiert...");
+      setExportProgress(85);
+
+      // Encode to MP4 with H.264
+      await ffmpeg.exec([
+        "-framerate", String(fps),
+        "-i", "frame%05d.jpg",
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-preset", "fast",
+        "-crf", "23",
+        "-movflags", "+faststart",
+        "output.mp4",
+      ]);
+
+      setExportProgress(95);
+      setProgress("Download wird vorbereitet...");
+
+      const data = await ffmpeg.readFile("output.mp4");
+      const mp4Blob = new Blob([new Uint8Array(data as Uint8Array)], { type: "video/mp4" });
+      const url = URL.createObjectURL(mp4Blob);
+
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${story.title.replace(/[^a-zA-Z0-9]/g, "_")}_paperdraw.webm`;
+      a.download = `${story.title.replace(/[^a-zA-Z0-9]/g, "_")}_paperdraw.mp4`;
       a.click();
-      URL.revokeObjectURL(url);
+
+      // Cleanup FFmpeg files
+      for (let f = 0; f < frameIndex; f++) {
+        const filename = `frame${String(f).padStart(5, "0")}.jpg`;
+        try { await ffmpeg.deleteFile(filename); } catch { /* ignore */ }
+      }
+      try { await ffmpeg.deleteFile("output.mp4"); } catch { /* ignore */ }
+
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setExportProgress(100);
+      setProgress("");
       setAppState("editing");
-    };
-
-    mediaRecorder.start();
-
-    // Record each scene
-    for (let i = 0; i < story.scenes.length; i++) {
-      setExportProgress(Math.round(((i + 1) / story.scenes.length) * 100));
-      setCurrentScene(i);
-      await drawScene(i);
-      await new Promise((r) => setTimeout(r, (story.scenes[i].duration || 3) * 1000));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Export fehlgeschlagen";
+      setError(`MP4-Export Fehler: ${message}`);
+      setAppState("editing");
     }
-
-    mediaRecorder.stop();
   };
 
   // Share functionality
@@ -589,8 +654,10 @@ export default function Home() {
             style={{ background: "var(--crayon-green)" }}
           >
             {appState === "exporting"
-              ? `Exportiere... ${exportProgress}%`
-              : "Video exportieren"}
+              ? `Exportiere MP4... ${exportProgress}%`
+              : ffmpegLoading
+                ? "FFmpeg laden..."
+                : "Als MP4 exportieren"}
           </button>
         </div>
       </div>
