@@ -1,26 +1,139 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --paper-cream: #FFF8E7;
+  --crayon-red: #FF6B6B;
+  --crayon-blue: #4ECDC4;
+  --crayon-yellow: #FFE66D;
+  --crayon-green: #95E76E;
+  --crayon-purple: #C77DFF;
+  --crayon-orange: #FFB347;
+  --crayon-pink: #FF9FF3;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper-cream);
+  font-family: 'Comic Neue', 'Comic Sans MS', cursive, sans-serif;
+  color: #333;
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-1deg); }
+  50% { transform: rotate(1deg); }
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: var(--crayon-red); }
+  25% { border-color: var(--crayon-blue); }
+  50% { border-color: var(--crayon-green); }
+  75% { border-color: var(--crayon-purple); }
+}
+
+@keyframes draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes bounce-in {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+.paper-bg {
+  background-image:
+    repeating-linear-gradient(
+      transparent,
+      transparent 31px,
+      #E8DCC8 31px,
+      #E8DCC8 32px
+    );
+  background-color: var(--paper-cream);
+}
+
+.crayon-btn {
+  position: relative;
+  border: 3px solid #333;
+  border-radius: 12px;
+  padding: 12px 24px;
+  font-weight: bold;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 3px 3px 0 #333;
+  font-family: 'Comic Neue', 'Comic Sans MS', cursive;
+}
+
+.crayon-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 #333;
+}
+
+.crayon-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 #333;
+}
+
+.crayon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 3px 3px 0 #333;
+}
+
+.scene-card {
+  animation: fadeSlideIn 0.5s ease-out;
+  border: 3px dashed #333;
+  border-radius: 15px;
+  background: white;
+  transition: all 0.2s;
+}
+
+.scene-card:hover {
+  box-shadow: 4px 4px 0 #333;
+}
+
+.scene-card.dragging {
+  opacity: 0.5;
+  transform: rotate(2deg);
+}
+
+.video-container {
+  border: 5px solid #333;
+  border-radius: 20px;
+  overflow: hidden;
+  background: white;
+  box-shadow: 6px 6px 0 #333;
+}
+
+.loading-spinner {
+  animation: pulse-border 2s ease-in-out infinite;
+  border: 4px dashed;
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+}
+
+.scene-visible {
+  animation: bounce-in 0.6s ease-out forwards;
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+}
+::-webkit-scrollbar-track {
+  background: var(--paper-cream);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--crayon-orange);
+  border-radius: 10px;
+  border: 2px solid #333;
+}
+
+input, textarea {
+  font-family: 'Comic Neue', 'Comic Sans MS', cursive;
 }
